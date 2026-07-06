@@ -65,6 +65,21 @@ const MERGE = [
   { id:'m3', no:'PRJ-2025-012', name:'办公自动化系统（结项）', type:'close', src:'飞书结项流程', dt:'2026-07-04 16:00', f:{name:'办公自动化系统',no:'PRJ-2025-012',type:'external',product:'产品C',leader:'p6',desc:'项目终止结项。',status:'draft',closeDate:'2026-03-31',closeReason:'战略调整'} },
 ];
 
+/* 已合并项目清单（合并后自动移入，状态：已处理；可手动重置为初始化回到待合并清单） */
+const MERGED = [
+  { id:'mg1', no:'PRJ-2026-007', name:'智能客服平台二期建设（示例）', type:'setup', src:'飞书立项流程', dt:'2026-07-05 10:00', f:{name:'智能客服平台二期建设',no:'PRJ-2026-007',type:'external',product:'产品A',leader:'p1',desc:'示例已合并记录。',status:'draft'}, _cid:'p1', _choices:{}, status:'已处理', mergedAt:'2026-07-05 10:30', targetName:'智能客服平台建设' },
+];
+
+/* 产品管理（REQ-PM-005：产品及子产品的枚举值与层级关系在系统后台维护） */
+let PRODUCTS = [
+  { id:'prod1', name:'产品A', parent:null },
+  { id:'prod1a', name:'产品A-Web端', parent:'prod1' },
+  { id:'prod1b', name:'产品A-移动端', parent:'prod1' },
+  { id:'prod1a1', name:'产品A-Web管理后台', parent:'prod1a' },
+  { id:'prod2', name:'产品B', parent:null },
+  { id:'prod3', name:'产品C', parent:null },
+];
+
 const APPR = [
   { id:'a1', pid:'p1', pn:'智能客服平台建设', from:'进行中', to:'已完成', who:'张明远', dt:'2026-07-04', st:'pending', reason:'项目已完成全部开发与测试，申请结项。' },
   { id:'a2', pid:'p4', pn:'ERP系统对接项目', from:'进行中', to:'挂起', who:'陈思远', dt:'2026-07-03', st:'pending', reason:'等待第三方系统接口就绪，需暂时挂起。' },
@@ -106,6 +121,7 @@ let userSel = {};
 let statusPid = null;
 let filterStatus = 'all';
 let filterProduct = 'all';
+let expandedProducts = {}; // 产品树展开/收起状态
 let filterType = 'all';
 let filterLeader = 'all';
 let viewMode = 'list';
@@ -128,7 +144,7 @@ function applyRole() {
   const adminOnly = role==='admin';
   const adminPmo = role==='admin'||role==='pmo';
   ['navMerge','navAppr'].forEach(function (id) { const e = document.getElementById(id); if(e) e.style.display = adminPmo ? '' : 'none'; });
-  ['navUsers','navLogs','navSync','navSyncP','navPush','navRoles'].forEach(function (id) { const e = document.getElementById(id); if(e) e.style.display = adminOnly ? '' : 'none'; });
+  ['navUsers','navLogs','navSync','navSyncP','navPush','navRoles','navMerged','navProducts'].forEach(function (id) { const e = document.getElementById(id); if(e) e.style.display = adminOnly ? '' : 'none'; });
 }
 function pageOK(p) { if (role==='admin') return true; if (role==='pmo') return ['proj','merge','appr'].includes(p); return ['proj'].includes(p); }
 function canEdit() { return role==='admin'||role==='lead'; }
@@ -144,13 +160,15 @@ function navTo(p) {
   document.querySelectorAll('#sideNav .nav-i').forEach(function (el) { el.classList.remove('on'); });
   const ni = document.querySelector('[data-pg="' + p + '"]');
   if (ni) ni.classList.add('on');
-  const labels = { proj:'项目清单', merge:'待合并项目清单', appr:'项目审批', users:'用户与权限管理', logs:'操作日志', roles:'角色管理' };
+  const labels = { proj:'项目清单', merge:'待合并项目清单', appr:'项目审批', users:'用户与权限管理', logs:'操作日志', roles:'角色管理', merged:'已合并项目清单', products:'产品管理' };
   document.getElementById('bc').innerHTML = labels[p] || p;
   updateBadges();
   switch(p) {
     case 'proj': renderProj(); break; case 'merge': renderMerge(); break;
     case 'appr': renderAppr(); break; case 'users': renderUsers(); break;
     case 'logs': renderLogs(); break; case 'roles': renderRoles(); break;
+    case 'merged': renderMerged(); break;
+    case 'products': renderProducts(); break;
   }
 }
 
@@ -184,7 +202,7 @@ function renderProj() {
       <div style="display:flex;align-items:center;gap:12px;padding:10px 20px;border-bottom:1px solid var(--bd);background:var(--mu);flex-wrap:wrap;">\
         <span style="font-size:12px;font-weight:600;color:var(--tx2);">筛选：</span>\
         <select onchange="setFilter(\'product\',this.value,this)" style="padding:5px 10px;border-radius:var(--r);border:1.5px solid var(--bd);font-size:12px;font-family:var(--font);background:var(--surf);">\
-          <option value="all" ' + (filterProduct==='all'?'selected':'') + '>所属产品：全部</option>' + products.map(function (p) { return '<option value="' + p + '" ' + (filterProduct===p?'selected':'') + '>' + p + '</option>'; }).join('') + '\
+          <option value="all" ' + (filterProduct==='all'?'selected':'') + '>所属产品：全部</option>' + getProductOptions(filterProduct==='all'?'':filterProduct) + '\
         </select>\
         <select onchange="setFilter(\'type\',this.value,this)" style="padding:5px 10px;border-radius:var(--r);border:1.5px solid var(--bd);font-size:12px;font-family:var(--font);background:var(--surf);">\
           <option value="all" ' + (filterType==='all'?'selected':'') + '>项目类型：全部</option><option value="external" ' + (filterType==='external'?'selected':'') + '>外部项目</option><option value="internal" ' + (filterType==='internal'?'selected':'') + '>内部项目</option>\
@@ -275,7 +293,7 @@ function startEdit() {
   document.getElementById('de').innerHTML='\
     <div class="d-row"><div class="card"><div class="card-hd">编辑基本信息（REQ-PM-002）</div>\
       <div class="f-row"><div class="fg"><label>项目名称</label><input type="text" id="en" value="' + p.name + '"></div><div class="fg"><label>项目编号</label><input type="text" id="eno" value="' + p.no + '"></div></div>\
-      <div class="f-row"><div class="fg"><label>项目类型</label><select id="et"><option value="external" ' + (p.type==='external'?'selected':'') + '>外部项目</option><option value="internal" ' + (p.type==='internal'?'selected':'') + '>内部项目</option></select></div><div class="fg"><label>所属产品</label><select id="ep"><option ' + (p.product==='产品A'?'selected':'') + '>产品A</option><option ' + (p.product==='产品B'?'selected':'') + '>产品B</option><option ' + (p.product==='产品C'?'selected':'') + '>产品C</option></select></div></div>\
+      <div class="f-row"><div class="fg"><label>项目类型</label><select id="et"><option value="external" ' + (p.type==='external'?'selected':'') + '>外部项目</option><option value="internal" ' + (p.type==='internal'?'selected':'') + '>内部项目</option></select></div><div class="fg"><label>所属产品</label><select id="ep">' + getProductOptions(p.product) + '</select></div></div>\
       <div class="f-row"><div class="fg"><label>负责人</label><select id="eld">' + PPL.map(function (x) { return '<option value="' + x.id + '" ' + (p.leader===x.id?'selected':'') + '>' + x.name + '</option>'; }).join('') + '</select></div><div class="fg"><label>开始日期</label><input type="date" id="es" value="' + p.start + '" onchange="editData.start=this.value; syncMemHours(); document.getElementById(\'tmpTbl\').innerHTML=renderTmpMems();"></div></div>\
       <div class="f-row"><div class="fg"><label>结束日期</label><input type="date" id="ee" value="' + p.end + '" onchange="editData.end=this.value; syncMemHours(); document.getElementById(\'tmpTbl\').innerHTML=renderTmpMems();"></div></div>\
       <div class="fg"><label>项目描述</label><textarea id="ed">' + p.desc + '</textarea></div>\
@@ -437,7 +455,7 @@ function renderMerge() {
 function showCreateModal() {
   const m=document.createElement('div'); m.className='mod'; m.style.display='flex';
   m.onclick=function (e) { if(e.target===this)this.remove(); };
-  m.innerHTML='<div class="mod-p"><div class="mod-h"><h3>手动创建项目（REQ-PM-001）</h3><button class="btn btn-gh btn-sm" onclick="this.closest(\'.mod\').remove()">&times;</button></div><div class="mod-b"><div class="f-row"><div class="fg"><label>项目名称 *</label><input type="text" id="ncn"></div><div class="fg"><label>项目编号</label><input type="text" id="ncno" placeholder="PRJ-2026-"></div></div><div class="f-row"><div class="fg"><label>项目类型</label><select id="nct"><option value="external">外部项目</option><option value="internal">内部项目</option></select></div><div class="fg"><label>所属产品</label><select id="ncp"><option>产品A</option><option>产品B</option><option>产品C</option></select></div></div><div class="fg"><label>项目描述</label><textarea id="ncd"></textarea></div></div><div class="mod-f"><button class="btn btn-gh" onclick="this.closest(\'.mod\').remove()">取消</button><button class="btn btn-p" onclick="doCreate(this)">创建（状态：初始化）</button></div></div>';
+  m.innerHTML='<div class="mod-p"><div class="mod-h"><h3>手动创建项目（REQ-PM-001）</h3><button class="btn btn-gh btn-sm" onclick="this.closest(\'.mod\').remove()">&times;</button></div><div class="mod-b"><div class="f-row"><div class="fg"><label>项目名称 *</label><input type="text" id="ncn"></div><div class="fg"><label>项目编号</label><input type="text" id="ncno" placeholder="PRJ-2026-"></div></div><div class="f-row"><div class="fg"><label>项目类型</label><select id="nct"><option value="external">外部项目</option><option value="internal">内部项目</option></select></div><div class="fg"><label>所属产品</label><select id="ncp">' + getProductOptions() + '</select></div></div><div class="fg"><label>项目描述</label><textarea id="ncd"></textarea></div></div><div class="mod-f"><button class="btn btn-gh" onclick="this.closest(\'.mod\').remove()">取消</button><button class="btn btn-p" onclick="doCreate(this)">创建（状态：初始化）</button></div></div>';
   document.body.appendChild(m);
 }
 function doCreate(btn) {
@@ -521,7 +539,82 @@ function doMerge(){
   if(tgt){Object.keys(mi._choices||{}).forEach(function (k) { if(k==='closeDate'||k==='closeReason')return;if(mi._choices[k]==='merge'&&mi.f[k]!==undefined)tgt[k]=mi.f[k]; });tgt.status=mi.type==='close'?'closed':'active';}
   else{PROJ.push({id:'p'+Date.now(),no:mi.f.no,name:mi.f.name,type:mi.f.type,product:mi.f.product,leader:mi.f.leader,status:'active',start:new Date().toISOString().split('T')[0],end:'',desc:mi.f.desc||'',members:[]});}
   LOGS.unshift({t:new Date().toISOString().replace('T',' ').substring(0,16),u:'系统管理员',a:'合并项目',g:mi.f.name,d:(mi.type==='close'?'结项':mi.type==='manual'?'手动创建':'立项') + '合并至项目清单'});
-  MERGE.splice(MERGE.indexOf(mi),1); toast('项目合并完成！','ok'); updateBadges(); renderMerge();
+  // 移入已合并项目清单，状态：已处理
+  MERGED.push({
+    id: mi.id, no: mi.no, name: mi.name, type: mi.type, src: mi.src, dt: mi.dt, f: JSON.parse(JSON.stringify(mi.f)),
+    _cid: mi._cid || null, _choices: mi._choices ? JSON.parse(JSON.stringify(mi._choices)) : {},
+    status: '已处理',
+    mergedAt: new Date().toISOString().replace('T',' ').substring(0,16),
+    targetName: tgt ? tgt.name : '新建项目'
+  });
+  MERGE.splice(MERGE.indexOf(mi),1); toast('项目合并完成！已移入已合并项目清单','ok'); updateBadges(); renderMerge();
+}
+
+/* ═══════════════════════════════════════
+   MERGED PROJECT LIST — 已合并项目清单
+   ═══════════════════════════════════════ */
+function renderMerged(flt) {
+  const f = flt || 'all';
+  let list = [...MERGED];
+  if (f !== 'all') list = list.filter(function (m) { return m.status === f; });
+
+  const tagCls = { 'setup': 'b', 'close': 'r', 'manual': 'gr' };
+  const tagTx = { 'setup': '立项', 'close': '结项', 'manual': '手动创建' };
+  const statusCls = { '已处理': 'g', '初始化': 'y' };
+
+  document.getElementById('content').innerHTML =
+    '<div class="ph"><div><h1>已合并项目清单</h1><p class="subt">合并完成的项目记录。状态为「已处理」，可手动重置为「初始化」回到待合并清单。</p></div></div>' +
+    '<div class="tbl-wrap">' +
+      '<div class="tbl-bar">' +
+        '<div style="display:flex;align-items:center;gap:12px;">' +
+          '<span style="font-size:12px;font-weight:600;color:var(--tx2);">状态筛选：</span>' +
+          '<div class="ft">' +
+            '<button class="' + (f === 'all' ? 'sel' : '') + '" onclick="renderMerged(\'all\')">全部</button>' +
+            '<button class="' + (f === '已处理' ? 'sel' : '') + '" onclick="renderMerged(\'已处理\')">已处理</button>' +
+            '<button class="' + (f === '初始化' ? 'sel' : '') + '" onclick="renderMerged(\'初始化\')">初始化</button>' +
+          '</div>' +
+        '</div>' +
+        '<span style="font-size:12px;color:var(--tx3);">共 ' + list.length + ' 条记录</span>' +
+      '</div>' +
+      (list.length === 0 ? '<div class="empty">暂无已合并项目记录</div>' :
+      '<table><thead><tr><th>类型</th><th>编号</th><th>名称</th><th>来源</th><th>合并至</th><th>合并时间</th><th>状态</th><th>操作</th></tr></thead><tbody>' +
+      list.map(function (m) {
+        return '<tr>' +
+          '<td><span class="tag ' + (tagCls[m.type] || 'gr') + '">' + (tagTx[m.type] || m.type) + '</span></td>' +
+          '<td>' + m.no + '</td>' +
+          '<td><span class="ct">' + m.f.name + '</span></td>' +
+          '<td>' + m.src + '</td>' +
+          '<td>' + (m.targetName || '—') + '</td>' +
+          '<td style="font-size:12px;color:var(--tx2);">' + m.mergedAt + '</td>' +
+          '<td><span class="tag ' + (statusCls[m.status] || 'gr') + '">' + m.status + '</span></td>' +
+          '<td class="ca">' +
+            (m.status === '已处理' ? '<button class="btn btn-o btn-sm" onclick="resetMergeStatus(\'' + m.id + '\')">重置为初始化</button>' : '') +
+          '</td>' +
+        '</tr>';
+      }).join('') + '</tbody></table>') +
+    '</div>';
+  page = 'merged';
+}
+
+function resetMergeStatus(mid) {
+  const mi = MERGED.find(function (m) { return m.id === mid; });
+  if (!mi) return;
+  if (!confirm('确定将项目「' + mi.f.name + '」状态重置为「初始化」并移回待合并项目清单？')) return;
+  // 从已合并清单移除，移回待合并清单
+  MERGED.splice(MERGED.indexOf(mi), 1);
+  MERGE.push({
+    id: mi.id, no: mi.no, name: mi.name, type: mi.type, src: mi.src, dt: mi.dt,
+    f: JSON.parse(JSON.stringify(mi.f))
+  });
+  LOGS.unshift({
+    t: new Date().toISOString().replace('T', ' ').substring(0, 16),
+    u: '系统管理员', a: '重置合并状态',
+    g: mi.f.name,
+    d: '状态由「已处理」重置为「初始化」，已移回待合并项目清单'
+  });
+  updateBadges();
+  renderMerged();
+  toast('已重置为初始化，项目已移回待合并清单', 'ok');
 }
 
 /* ═══════════════════════════════════════
@@ -618,6 +711,233 @@ function delRole(i) {
   document.getElementById('roleTbBody').innerHTML = renderRoleTable();
   LOGS.unshift({t:new Date().toISOString().replace('T',' ').substring(0,16),u:'管理员',a:'角色管理',g:'角色表',d:'删除角色「' + r + '」'});
   toast('已删除角色「' + r + '」','ok');
+}
+
+/* ═══════════════════════════════════════
+   PRODUCT MANAGEMENT — 产品管理（支持层级）
+   ═══════════════════════════════════════ */
+
+/* 生成产品下拉选项 HTML（value 为产品名称），供各处复用 */
+function getProductOptions(selected) {
+  const s = selected || '';
+  function renderOpts(parentId, depth) {
+    const d = depth || 0;
+    const children = PRODUCTS.filter(function (p) { return p.parent === parentId; });
+    let html = '';
+    children.forEach(function (prod) {
+      const prefix = d > 0 ? '└' + '—'.repeat(d) + ' ' : '';
+      html += '<option value="' + prod.name + '" ' + (s === prod.name ? 'selected' : '') + '>' + prefix + prod.name + '</option>';
+      html += renderOpts(prod.id, d + 1);
+    });
+    return html;
+  }
+  return renderOpts(null, 0);
+}
+
+/* 获取产品名称（兼容旧数据） */
+function getProductName(prodName) {
+  return prodName || '—';
+}
+
+function renderProducts() {
+  document.getElementById('content').innerHTML =
+    '<div class="ph"><div><h1>产品管理</h1><p class="subt">维护产品及子产品层级关系（支持多级嵌套），修改将实时生效至项目筛选与编辑。</p></div></div>' +
+    '<div class="tbl-wrap">' +
+      '<div class="tbl-bar">' +
+        '<div style="display:flex;align-items:center;gap:8px;flex:1;flex-wrap:wrap;">' +
+          '<select id="newProdParent" style="padding:7px 12px;border-radius:var(--r);border:1.5px solid var(--bd);font-size:13px;font-family:var(--font);background:var(--surf);"><option value="">作为主产品</option>' + getProductOptions() + '</select>' +
+          '<input type="text" id="newProdInput" placeholder="输入产品名称..." style="padding:7px 12px;border-radius:var(--r);border:1.5px solid var(--bd);font-size:13px;font-family:var(--font);width:180px;" onkeydown="if(event.key===\'Enter\')addProduct()">' +
+          '<button class="btn btn-p btn-sm" onclick="addProduct()">+ 添加</button>' +
+          '<span style="color:var(--bd);margin:0 4px;">|</span>' +
+          '<button class="btn btn-gh btn-sm" onclick="expandAll()">全部展开</button>' +
+          '<button class="btn btn-gh btn-sm" onclick="collapseAll()">全部收起</button>' +
+        '</div>' +
+        '<span style="font-size:12px;color:var(--tx3);">共 ' + PRODUCTS.length + ' 个产品</span>' +
+      '</div>' +
+      '<div id="prodTbBody">' + renderProductTable() + '</div>' +
+    '</div>';
+  page = 'products';
+}
+
+function expandAll() {
+  PRODUCTS.forEach(function (p) { expandedProducts[p.id] = true; });
+  document.getElementById('prodTbBody').innerHTML = renderProductTable();
+}
+
+function collapseAll() {
+  PRODUCTS.forEach(function (p) { expandedProducts[p.id] = false; });
+  document.getElementById('prodTbBody').innerHTML = renderProductTable();
+}
+
+/* 切换产品树节点展开/收起 */
+function toggleProduct(prodId) {
+  expandedProducts[prodId] = !expandedProducts[prodId];
+  document.getElementById('prodTbBody').innerHTML = renderProductTable();
+}
+
+function renderProductTable() {
+  if (!PRODUCTS.length) return '<div class="empty">暂无产品，请添加</div>';
+
+  // 递归统计含子产品的关联项目总数
+  function countTreeRefs(prod) {
+    let cnt = PROJ.filter(function (p) { return p.product === prod.name; }).length +
+              MERGE.filter(function (m) { return m.f.product === prod.name; }).length +
+              MERGED.filter(function (m) { return m.f.product === prod.name; }).length;
+    var children = PRODUCTS.filter(function (p) { return p.parent === prod.id; });
+    children.forEach(function (c) { cnt += countTreeRefs(c); });
+    return cnt;
+  }
+
+  // 递归渲染产品行（含展开/收起）
+  function renderRow(prod, depth, ancestors) {
+    var d = depth || 0;
+    var anc = ancestors || []; // [{id, isLast}] 从根到当前节点的祖先链
+    var children = PRODUCTS.filter(function (p) { return p.parent === prod.id; });
+    var hasChildren = children.length > 0;
+    var expanded = expandedProducts[prod.id] !== false; // 默认展开
+    var projCount = PROJ.filter(function (p) { return p.product === prod.name; }).length;
+    var mergeCount = MERGE.filter(function (m) { return m.f.product === prod.name; }).length;
+    var directRef = projCount + mergeCount;
+    var allRef = countTreeRefs(prod);
+
+    // ── 构建树形连线前缀 ──
+    var prefix = '';
+    for (var i = 0; i < anc.length; i++) {
+      prefix += '<span style="color:var(--tx3);">' + (anc[i].isLast ? '&emsp;&ensp;' : '│&emsp;&ensp;') + '</span>';
+    }
+    // 当前行连接符
+    var isLast = anc.length > 0 ? anc[anc.length - 1].isLast : true;
+    var connector = d > 0 ? '<span style="color:var(--tx3);">' + (isLast ? '└── ' : '├── ') + '</span>' : '';
+
+    // ── 层级标签 ──
+    var levelTag = d === 0
+      ? '<span class="tag b">主产品</span>'
+      : '<span class="tag gr">' + d + ' 级子产品</span>';
+
+    // ── 展开/收起按钮 ──
+    var toggleBtn = '';
+    if (hasChildren) {
+      toggleBtn = '<span class="tree-toggle" onclick="toggleProduct(\'' + prod.id + '\')" style="cursor:pointer;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:4px;margin-right:4px;font-size:10px;color:var(--tx2);background:var(--mu);user-select:none;flex-shrink:0;">' + (expanded ? '▼' : '▶') + '</span>';
+    } else {
+      toggleBtn = '<span style="display:inline-block;width:20px;margin-right:4px;flex-shrink:0;"></span>';
+    }
+
+    // ── 直接关联统计 ──
+    var refHtml = directRef > 0
+      ? '<span style="font-weight:600;color:var(--tx);">' + directRef + '</span><span style="color:var(--tx3);"> 个直接关联</span>'
+      : '<span style="color:var(--tx3);">—</span>';
+    if (hasChildren && allRef > directRef) {
+      refHtml += ' <span style="font-size:11px;color:var(--tx3);">（含子产品共 ' + allRef + '）</span>';
+    }
+
+    // ── 行 HTML ──
+    var rowStyle = d === 0 ? 'background:var(--mu);' : '';
+    var html = '<tr id="prod-row-' + prod.id + '" style="' + rowStyle + '">' +
+      '<td>' + prefix + connector + toggleBtn + '<span class="ct" id="prod-name-' + prod.id + '">' + prod.name + '</span>' +
+        '<input type="text" class="role-edit-inline" id="prod-edit-' + prod.id + '" value="' + prod.name + '" style="display:none;" onkeydown="if(event.key===\'Enter\')saveProductEdit(\'' + prod.id + '\')">' +
+      '</td>' +
+      '<td>' + levelTag + '</td>' +
+      '<td style="font-size:12px;">' + refHtml + '</td>' +
+      '<td class="ca">' +
+        '<button class="btn btn-o btn-sm" id="prod-btn-edit-' + prod.id + '" onclick="startProdEdit(\'' + prod.id + '\')">✎ 编辑</button>' +
+        '<button class="btn btn-p btn-sm" id="prod-btn-save-' + prod.id + '" style="display:none;" onclick="saveProductEdit(\'' + prod.id + '\')">保存</button>' +
+        '<button class="btn btn-gh btn-sm" style="color:var(--red);" onclick="delProduct(\'' + prod.id + '\')">删除</button>' +
+      '</td>' +
+    '</tr>';
+
+    // ── 子节点（仅在展开时渲染） ──
+    if (hasChildren && expanded) {
+      children.forEach(function (child, i) {
+        var childAnc = anc.concat([{ id: prod.id, isLast: i === children.length - 1 }]);
+        html += renderRow(child, d + 1, childAnc);
+      });
+    }
+
+    return html;
+  }
+
+  // ── 渲染顶级产品 ──
+  var topLevel = PRODUCTS.filter(function (p) { return p.parent === null; });
+  if (!topLevel.length) return '<div class="empty">暂无主产品</div>';
+
+  return '<table><thead><tr><th>产品名称</th><th>层级</th><th>关联项目</th><th style="width:180px;">操作</th></tr></thead><tbody>' +
+    topLevel.map(function (prod, i) {
+      return renderRow(prod, 0, []);
+    }).join('') +
+    '</tbody></table>';
+}
+
+function addProduct() {
+  const inp = document.getElementById('newProdInput');
+  const parentSel = document.getElementById('newProdParent');
+  const v = inp.value.trim();
+  if (!v) { toast('请输入产品名称', 'err'); return; }
+  if (PRODUCTS.some(function (p) { return p.name === v && p.parent === (parentSel.value || null); })) {
+    toast('同层级下已存在同名产品', 'err'); return;
+  }
+  const parentName = parentSel.value || null;
+  // 支持多级：父级可为任意产品（按名称匹配，同层已做重名校验）
+  const parentProd = parentName ? PRODUCTS.find(function (p) { return p.name === parentName; }) : null;
+  const parentId = parentProd ? parentProd.id : null;
+  PRODUCTS.push({ id: 'prod' + Date.now(), name: v, parent: parentId });
+  inp.value = '';
+  parentSel.value = '';
+  document.getElementById('prodTbBody').innerHTML = renderProductTable();
+  LOGS.unshift({ t: new Date().toISOString().replace('T', ' ').substring(0, 16), u: '管理员', a: '产品管理', g: '产品表', d: '添加产品「' + v + '」' });
+  toast('已添加产品「' + v + '」', 'ok');
+}
+
+function startProdEdit(prodId) {
+  document.getElementById('prod-name-' + prodId).style.display = 'none';
+  document.getElementById('prod-edit-' + prodId).style.display = '';
+  document.getElementById('prod-edit-' + prodId).focus();
+  document.getElementById('prod-btn-edit-' + prodId).style.display = 'none';
+  document.getElementById('prod-btn-save-' + prodId).style.display = '';
+}
+
+function saveProductEdit(prodId) {
+  const v = document.getElementById('prod-edit-' + prodId).value.trim();
+  if (!v) { toast('产品名称不能为空', 'err'); return; }
+  const prod = PRODUCTS.find(function (p) { return p.id === prodId; });
+  if (!prod) return;
+  const old = prod.name;
+  if (v !== old && PRODUCTS.some(function (p) { return p.name === v && p.parent === prod.parent && p.id !== prodId; })) {
+    toast('同层级下已存在同名产品', 'err'); return;
+  }
+  // 重命名：同步更新所有引用该产品名称的项目数据
+  if (v !== old) {
+    PROJ.forEach(function (p) { if (p.product === old) p.product = v; });
+    MERGE.forEach(function (m) { if (m.f.product === old) m.f.product = v; });
+    MERGED.forEach(function (m) { if (m.f.product === old) m.f.product = v; });
+  }
+  prod.name = v;
+  document.getElementById('prodTbBody').innerHTML = renderProductTable();
+  LOGS.unshift({ t: new Date().toISOString().replace('T', ' ').substring(0, 16), u: '管理员', a: '产品管理', g: '产品表', d: v !== old ? '重命名「' + old + '」→「' + v + '」（已同步更新所有关联项目）' : '保存「' + v + '」' });
+  toast(v !== old ? '已重命名为「' + v + '」，关联项目已同步更新' : '保存成功', 'ok');
+}
+
+function delProduct(prodId) {
+  const prod = PRODUCTS.find(function (p) { return p.id === prodId; });
+  if (!prod) return;
+  const children = PRODUCTS.filter(function (p) { return p.parent === prodId; });
+  if (children.length) {
+    toast('请先删除子产品：' + children.map(function (c) { return c.name; }).join('、'), 'err');
+    return;
+  }
+  const projCount = PROJ.filter(function (p) { return p.product === prod.name; }).length;
+  const mergeCount = MERGE.filter(function (m) { return m.f.product === prod.name; }).length;
+  const warnMsg = projCount > 0 || mergeCount > 0
+    ? '产品「' + prod.name + '」关联了 ' + projCount + ' 个项目、' + mergeCount + ' 条待合并记录。\n删除后这些项目/记录的所属产品将变为空，确定继续？'
+    : '确定删除产品「' + prod.name + '」？';
+  if (!confirm(warnMsg)) return;
+  PRODUCTS.splice(PRODUCTS.indexOf(prod), 1);
+  // 清理引用
+  PROJ.forEach(function (p) { if (p.product === prod.name) p.product = ''; });
+  MERGE.forEach(function (m) { if (m.f.product === prod.name) m.f.product = ''; });
+  MERGED.forEach(function (m) { if (m.f.product === prod.name) m.f.product = ''; });
+  document.getElementById('prodTbBody').innerHTML = renderProductTable();
+  LOGS.unshift({ t: new Date().toISOString().replace('T', ' ').substring(0, 16), u: '管理员', a: '产品管理', g: '产品表', d: '删除产品「' + prod.name + '」' });
+  toast('已删除产品「' + prod.name + '」', 'ok');
 }
 
 /* ═══════════════════════════════════════
