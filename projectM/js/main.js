@@ -371,8 +371,8 @@ function showMemModal() {
     return '<tr data-idx="' + i + '">\
       <td style="text-align:center;">' + (i + 1) + '</td>\
       <td><span class="mav" style="background:' + (pp?.av||'#2563EB') + '">' + ((pp?.name||'?')[0]) + '</span>' + (pp?.name||'—') + '</td>\
-      <td><div class="chip-grp" data-name="roles" data-multi="1" style="min-width:140px;">' + ROLES.map(function (r) { const isSel=(mem.roles||[]).includes(r); return '<span class="chip' + (isSel?' sel':'') + '" data-value="' + r + '" onclick="toggleChip(this,1)">' + r + (isSel?'<span class="ch-x">×</span>':'') + '</span>'; }).join('') + '</div></td>\
-      <td><div class="chip-grp" data-name="attr" data-multi="0">' + ATTRS.map(function (a) { return '<span class="chip' + (mem.attr===a?' sel attr-sel':'') + '" data-value="' + a + '" onclick="toggleChip(this,0)">' + a + '</span>'; }).join('') + '</div></td>\
+      <td><select class="sel-role" style="width:100%;padding:6px 8px;border:1px solid var(--bd);border-radius:6px;font-size:13px;background:var(--bg);">' + ROLES.map(function (r) { const selRole=(mem.roles||[])[0]||'成员'; return '<option value="' + r + '"' + (selRole===r?' selected':'') + '>' + r + '</option>'; }).join('') + '</select></td>\
+      <td><select class="sel-attr" style="width:100%;padding:6px 8px;border:1px solid var(--bd);border-radius:6px;font-size:13px;background:var(--bg);">' + ATTRS.map(function (a) { return '<option value="' + a + '"' + (mem.attr===a?' selected':'') + '>' + a + '</option>'; }).join('') + '</select></td>\
       ' + months.map(function (mon) { return '<td style="text-align:center;"><input type="number" class="m-hour" data-mon="' + mon + '" value="' + (mem.hours?.[mon] || '') + '" min="0" step="1" style="width:58px;text-align:center;padding:6px 4px;font-size:12px;" oninput="calcMemTotal(this)"></td>'; }).join('') + '\
       <td class="m-total" style="text-align:center;font-weight:600;">' + total + '</td>\
       <td><button class="btn btn-gh btn-sm" style="color:var(--red);" onclick="removeTmpMem(' + i + '); this.closest(\'.mod\').remove(); showMemModal();">移除</button></td>\
@@ -424,10 +424,10 @@ function saveMems(btn) {
   const rows = btn.closest('.mod').querySelectorAll('tbody tr[data-idx]');
   rows.forEach(function (row) {
     const idx = parseInt(row.dataset.idx);
-    const roleGrp = row.querySelector('.chip-grp[data-name="roles"]');
-    const roles = readChips(roleGrp, true);
-    const attrGrp = row.querySelector('.chip-grp[data-name="attr"]');
-    const attr = readChips(attrGrp, false) || '国智';
+    const roleSel = row.querySelector('.sel-role');
+    const roles = roleSel ? [roleSel.value] : ['成员'];
+    const attrSel = row.querySelector('.sel-attr');
+    const attr = attrSel ? attrSel.value : '国智';
     const hours = {}; let total = 0;
     row.querySelectorAll('.m-hour').forEach(function (inp) {
       const v = parseFloat(inp.value) || 0;
