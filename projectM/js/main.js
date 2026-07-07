@@ -1432,10 +1432,11 @@ async function doCreate(btn) {
   renderMerge(); updateBadges();
 }
 
-function quickNew(mid) {
+async function quickNew(mid) {
   var mi = MERGE.find(function (m) { return m._id === mid; });
   if (!mi) return;
-  PROJ.push({
+  // 创建新项目到项目清单
+  var newProj = {
     _id: 'p' + Date.now(), name: mi.f.name, yonyouNo: mi.f.no || mi.no || '',
     feishuNo: '', status: '进行中', type: mi.f.type, costType: '',
     scale: mi.f.scale || '', desc: mi.f.desc || '', note: '',
@@ -1443,13 +1444,38 @@ function quickNew(mid) {
     leader: mi.f.leader, sponsor: mi.f.sponsor, memberIds: mi.f.members || [],
     start: new Date().toISOString().split('T')[0], end: '', createdAt: new Date().toISOString().split('T')[0],
     completedAt: '', members: []
-  });
+  };
+  PROJ.push(newProj);
+
+  // 写回项目清单
+  try {
+    await API.createProject({
+      '项目名称': newProj.name, '项目类型': newProj.type,
+      '所属产品大类': newProj.product || '', '项目状态': '进行中',
+      '项目目标': newProj.desc || '', '项目规模': newProj.scale || '',
+      '项目计划开始时间': newProj.start
+    });
+  } catch (e) { console.error('quickNew: create project failed', e); }
+
   // 标记数据清洗表为已合并
   try {
-    API.updateMerge(mid, { '合并情况': '已合并' }).catch(function () {});
-  } catch (e) {}
+    await API.updateMerge(mid, { '合并情况': '已合并' });
+  } catch (e) {
+    console.error('quickNew: update merge status failed', e);
+    toast('合并状态写回失败，请手动刷新同步', 'err');
+  }
+
+  // 移入已合并清单
+  MERGED.push({
+    _id: mi._id, no: mi.no, name: mi.name, flowType: mi.flowType,
+    type: mi.type, src: mi.src, dt: mi.dt, f: JSON.parse(JSON.stringify(mi.f)),
+    status: '已处理',
+    mergedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
+    targetName: newProj.name
+  });
   MERGE.splice(MERGE.indexOf(mi), 1);
-  addLogEntry('快速新建', mi.f.name, '从待合并清单直接创建项目');
+
+  addLogEntry('快速新建', mi.f.name, '从待合并清单直接创建项目并标记已合并');
   toast('已新建项目，状态：进行中', 'ok');
   renderMerge(); updateBadges();
 }
@@ -1652,7 +1678,7 @@ async function doMerge() {
 
   // ── 移入已合并清单 ──
   MERGED.push({
-    id: mi._id, no: mi.no, name: mi.name, flowType: mi.flowType,
+    _id: mi._id, no: mi.no, name: mi.name, flowType: mi.flowType,
     type: mi.type, src: mi.src, dt: mi.dt, f: JSON.parse(JSON.stringify(mi.f)),
     _cid: mi._cid || null, _choices: mi._choices ? JSON.parse(JSON.stringify(mi._choices)) : {},
     status: '已处理',
@@ -1687,7 +1713,6 @@ function renderMerged(flt) {
           '<div class="ft">' +
             '<button class="' + (f === 'all' ? 'sel' : '') + '" onclick="renderMerged(\'all\')">全部</button>' +
             '<button class="' + (f === '已处理' ? 'sel' : '') + '" onclick="renderMerged(\'已处理\')">已处理</button>' +
-            '<button class="' + (f === '初始化' ? 'sel' : '') + '" onclick="renderMerged(\'初始化\')">初始化</button>' +
           '</div>' +
         '</div>' +
         '<span style="font-size:12px;color:var(--tx3);">共 ' + list.length + ' 条记录</span>' +
@@ -1704,7 +1729,7 @@ function renderMerged(flt) {
           '<td style="font-size:12px;color:var(--tx2);">' + (m.mergedAt || '') + '</td>' +
           '<td><span class="tag ' + (statusCls[m.status] || 'gr') + '">' + m.status + '</span></td>' +
           '<td class="ca">' +
-            (m.status === '已处理' ? '<button class="btn btn-o btn-sm" onclick="resetMergeStatus(\'' + m.id + '\')">重置为初始化</button>' : '') +
+            (m.status === '已处理' ? '<button class="btn btn-o btn-sm" onclick="resetMergeStatus(\'' + m._id + '\')">重置为初始化</button>' : '') +
           '</td></tr>';
       }).join('') + '</tbody></table>') +
     '</div>';
@@ -1713,7 +1738,7 @@ function renderMerged(flt) {
 
 /* resetMergeStatus — 写回数据清洗表 */
 async function resetMergeStatus(mid) {
-  var mi = MERGED.find(function (m) { return m.id === mid; });
+  var mi = MERGED.find(function (m) { return m._id === mid; });
   if (!mi) return;
   if (!confirm('确定将项目「' + mi.f.name + '」状态重置为「初始化」并移回待合并项目清单？')) return;
 
