@@ -14,12 +14,6 @@ const { execSync } = require('child_process');
 
 const PORT = parseInt(process.argv[2]) || 3456;
 const ROOT = __dirname;
-const TMP_DIR = fs.mkdtempSync(path.join(__dirname, '.tmp_'));
-
-// 进程退出时清理临时文件
-process.on('exit', function () { try { fs.rmSync(TMP_DIR, { recursive: true, force: true }); } catch (e) {} });
-process.on('SIGINT', function () { try { fs.rmSync(TMP_DIR, { recursive: true, force: true }); } catch (e) {} process.exit(); });
-process.on('SIGTERM', function () { try { fs.rmSync(TMP_DIR, { recursive: true, force: true }); } catch (e) {} process.exit(); });
 
 // ── 表路由配置 ──
 // 基于实际飞书多维表格结构：
@@ -102,7 +96,7 @@ async function handleAPI(method, tableKey, recordId, body) {
     } else if (method === 'POST') {
       if (body.rows && body.fields) {
         // 批量创建
-        const tmpFile = path.join(TMP_DIR, `batch_${Date.now()}.json`);
+        const tmpFile = path.join(ROOT, `.tmp_batch_${Date.now()}.json`);
         try {
           fs.writeFileSync(tmpFile, JSON.stringify(body));
           const result = lark(['base', '+record-batch-create', '--base-token', cfg.base, '--table-id', cfg.table, '--json', `@${path.basename(tmpFile)}`]);
@@ -117,7 +111,7 @@ async function handleAPI(method, tableKey, recordId, body) {
         const rid = body._record_id || '';
         delete body._upsert;
         delete body._record_id;
-        const tmpFile = path.join(TMP_DIR, `upsert_${Date.now()}.json`);
+        const tmpFile = path.join(ROOT, `.tmp_upsert_${Date.now()}.json`);
         try {
           fs.writeFileSync(tmpFile, JSON.stringify(body));
           const args = ['base', '+record-upsert', '--base-token', cfg.base, '--table-id', cfg.table, '--json', '@' + path.basename(tmpFile)];
@@ -135,7 +129,7 @@ async function handleAPI(method, tableKey, recordId, body) {
 
     } else if (method === 'PATCH' && recordId) {
       // 单条更新 = upsert，用临时文件
-      const tmpFile = path.join(TMP_DIR, `patch_${Date.now()}.json`);
+      const tmpFile = path.join(ROOT, `.tmp_patch_${Date.now()}.json`);
       try {
         fs.writeFileSync(tmpFile, JSON.stringify(body));
         const result = lark(['base', '+record-upsert', '--base-token', cfg.base, '--table-id', cfg.table, '--record-id', recordId, '--json', '@' + path.basename(tmpFile)]);

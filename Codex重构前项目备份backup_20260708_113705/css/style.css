@@ -101,30 +101,6 @@ tbody tr { transition: background .1s; cursor: pointer; }
 tbody tr:hover { background: var(--mu); }
 td .ct { font-weight: 600; color: var(--tx); }
 td .ca { display: flex; gap: 6px; }
-/* ── RESPONSIVE TABLE ── */
-.tbl-wrap table { min-width: 800px; }
-.tbl-wrap > div[style*="overflow-x:auto"] { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-.tbl-wrap td { max-width: 300px; overflow: hidden; text-overflow: ellipsis; }
-.tbl-wrap td:first-child { min-width: 140px; }
-.tbl-wrap td:nth-child(2) { white-space: nowrap; }
-
-/* ── RESPONSIVE DETAIL CARDS ── */
-@media (max-width: 900px) {
-  .d-row { grid-template-columns: 1fr; }
-  .f-row { grid-template-columns: 1fr; }
-}
-@media (max-width: 768px) {
-  .tbl-bar { flex-direction: column; align-items: stretch; }
-  .tbl-src { width: 100%; }
-  .ft { flex-wrap: wrap; }
-}
-@media (max-width: 600px) {
-  .ph { flex-direction: column; align-items: flex-start; gap: 10px; }
-  .ph .phr { width: 100%; justify-content: flex-start; }
-  .dl .lb { width: 70px; font-size: 11px; }
-  .dl .vl { font-size: 12px; word-break: break-all; }
-}
-
 
 /* ── TAGS ── */
 .tag { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 10px; white-space: nowrap; }
@@ -269,17 +245,3 @@ input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--pri); cu
   animation: spin .8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
-
-/* ── TREE TOGGLE ── */
-.tree-toggle { cursor:pointer; display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px; border-radius:4px; margin-right:4px; font-size:10px; color:var(--tx2); background:var(--mu); user-select:none; flex-shrink:0; }
-
-/* ── FILTER SELECT ── */
-.filter-select { padding:5px 8px; border-radius:var(--r); border:1.5px solid var(--bd); font-size:11px; font-family:var(--font); background:var(--surf); }
-.filter-select:focus { outline:none; border-color:var(--pri); }
-
-/* ── FILTER DATE ── */
-.filter-date { padding:4px 6px; border-radius:var(--r); border:1.5px solid var(--bd); font-size:11px; font-family:var(--font); background:var(--surf); flex:1; min-width:100px; }
-.filter-date:focus { outline:none; border-color:var(--pri); }
-
-/* ── HOUR INPUT ── */
-.m-hour-input { width:58px; text-align:center; padding:6px 4px; font-size:12px; }

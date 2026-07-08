@@ -11,22 +11,12 @@ window.API = (function () {
     const opts = { method, headers: { 'Content-Type': 'application/json' } };
     if (body) opts.body = JSON.stringify(body);
 
-    // 每个请求独立超时控制（10s），避免单表卡住全局
-    const controller = new AbortController();
-    const timeoutId = setTimeout(function () { controller.abort(); }, 10000);
-    opts.signal = controller.signal;
-
     let res;
     try {
       res = await fetch(url, opts);
     } catch (e) {
-      clearTimeout(timeoutId);
-      if (e.name === 'AbortError') {
-        throw new Error('请求超时：' + table + (id ? '/' + id : '') + '（10秒未响应）');
-      }
       throw new Error('网络请求失败：请确认 server.js 已在端口 3456 启动');
     }
-    clearTimeout(timeoutId);
 
     const json = await res.json();
     if (!json.ok) {
